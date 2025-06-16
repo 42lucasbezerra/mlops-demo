@@ -6,13 +6,18 @@ from medmnist import INFO, ChestMNIST
 from torchvision import transforms, models
 from torch.utils.data import DataLoader, Subset
 
+print('code started')
+
 # Configure MLflow tracking URI (fallback to localhost)
 tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 mlflow.set_tracking_uri(tracking_uri)
 mlflow.set_experiment("chestmnist-transfer-demo")
 
+print('experiment set')
+
 
 def main():
+    print('starting run')
     with mlflow.start_run():
         # Load ChestMNIST dataset
         info = INFO["chestmnist"]
@@ -59,3 +64,6 @@ def main():
         mlflow.log_param("dataset", "ChestMNIST")
         mlflow.log_metric("final_loss", loss.item())
         mlflow.pytorch.log_model(model, "resnet18_chestmnist")
+
+if __name__ == "__main__":
+    main()

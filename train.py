@@ -21,6 +21,7 @@ def main():
     with mlflow.start_run():
         # Load ChestMNIST dataset
         info = INFO["chestmnist"]
+        print(info)
         transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),

@@ -109,7 +109,7 @@ def main(num_epochs, learning_rate):
             signature = infer_signature(sample_input_np, sample_output)
             mlflow.pytorch.log_model(
                 model,
-                "resnet18_chestmnist",
+                name="resnet18_chestmnist",
                 signature=signature,
                 input_example=sample_input_np
             )

@@ -17,42 +17,39 @@ print('experiment set')
 
 
 def main():
-    print('starting run')
     with mlflow.start_run():
-        # Load ChestMNIST dataset
-        info = INFO["chestmnist"]
-        print(info)
+        # Load ChestMNIST dataset and apply transforms
         transform = transforms.Compose([
             transforms.Resize((224, 224)),
+            transforms.Grayscale(num_output_channels=3),
             transforms.ToTensor(),
-            transforms.Normalize(mean=tuple(info['mean']), std=tuple(info['std'])),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ])
         dataset = ChestMNIST(
-            root="data/medmnist",
-            split="train",
-            download=True,
-            transform=transform
+            root="data/medmnist", split="train", download=True, transform=transform
         )
         # Subsample for quick CPU runs
         #subset = Subset(dataset, list(range(len(dataset) // 5)))
-        loader = DataLoader(dataset, batch_size=64, shuffle=True)
+        loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=2)
 
-        # Build model (freeze backbone, fine-tune head)
+        # Build model (freeze backbone, fine-tune head for multi-label)
+        info = INFO["chestmnist"]
+        n_classes = len(info['label'])  # 14 labels
         model = models.resnet18(pretrained=True)
         for param in model.parameters():
             param.requires_grad = False
-        model.fc = nn.Linear(model.fc.in_features, info['n_classes'])
+        model.fc = nn.Linear(model.fc.in_features, n_classes)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model.to(device)
 
-        # Train for n epochs
+        # Train for 1 epoch with BCEWithLogitsLoss
         optimizer = torch.optim.Adam(model.fc.parameters(), lr=1e-3)
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.BCEWithLogitsLoss()
         model.train()
         num_epochs = 1
         for n in range(num_epochs):
             for images, labels in loader:
-                images, labels = images.to(device), labels.to(device).long()
+                images, labels = images.to(device), labels.to(device).float()
                 optimizer.zero_grad()
                 outputs = model(images)
                 loss = criterion(outputs, labels)

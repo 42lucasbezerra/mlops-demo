@@ -3,6 +3,7 @@ import argparse
 import mlflow
 import torch
 import torch.nn as nn
+from datetime import datetime
 from medmnist import INFO, ChestMNIST
 from torchvision import transforms, models
 from torchvision.models import ResNet18_Weights
@@ -31,8 +32,19 @@ def main(num_epochs):
     data_root = "data/medmnist"
     os.makedirs(data_root, exist_ok=True)
 
-    with mlflow.start_run():
-        # Load ChestMNIST dataset and apply transforms
+    # Generate a descriptive run name
+    run_name = f"chestmnist_resnet18_{datetime.now().strftime('%Y%m%d_%H%M')}"
+
+    with mlflow.start_run(run_name=run_name) as run:
+        # Add organizational tags
+        mlflow.set_tags({
+            "dataset": "ChestMNIST",
+            "model": "ResNet18",
+            "framework": "PyTorch",
+            "num_epochs": str(num_epochs)
+        })
+
+        # Load and preprocess data
         transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.Grayscale(num_output_channels=3),
@@ -71,26 +83,27 @@ def main(num_epochs):
                 loss.backward()
                 optimizer.step()
                 epoch_loss += loss.item()
-            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {epoch_loss/len(loader):.4f}")
+            avg_loss = epoch_loss / len(loader)
+            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
+            mlflow.log_metric("epoch_loss", avg_loss, step=epoch+1)
 
-        # Log parameters, metrics
+        # Log final metrics and parameters
         mlflow.log_param("batch_size", 64)
         mlflow.log_param("epochs", num_epochs)
-        mlflow.log_param("dataset", "ChestMNIST")
-        mlflow.log_metric("final_loss", loss.item())
+        mlflow.log_metric("final_loss", avg_loss)
 
-        # Infer model signature and log model with input example
-        sample_batch = next(iter(loader))[0][:1].to(device)
+        # Log model with signature and example
+        sample_input = next(iter(loader))[0][:1].to(device)
         model.eval()
         with torch.no_grad():
-            sample_output = model(sample_batch).cpu().numpy()
-        sample_input = sample_batch.cpu().numpy()
-        signature = infer_signature(sample_input, sample_output)
+            sample_output = model(sample_input).cpu().numpy()
+        sample_input_np = sample_input.cpu().numpy()
+        signature = infer_signature(sample_input_np, sample_output)
         mlflow.pytorch.log_model(
             model,
             "resnet18_chestmnist",
             signature=signature,
-            input_example=sample_input
+            input_example=sample_input_np
         )
 
 if __name__ == "__main__":

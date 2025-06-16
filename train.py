@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from medmnist import INFO, ChestMNIST
 from torchvision import transforms, models
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader #, Subset
 
 print('code started')
 
@@ -17,6 +17,10 @@ print('experiment set')
 
 
 def main():
+    # Ensure root directory exists for dataset
+    data_root = "data/medmnist"
+    os.makedirs(data_root, exist_ok=True)
+
     with mlflow.start_run():
         # Load ChestMNIST dataset and apply transforms
         transform = transforms.Compose([
@@ -26,7 +30,10 @@ def main():
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ])
         dataset = ChestMNIST(
-            root="data/medmnist", split="train", download=True, transform=transform
+            root=data_root,
+            split="train",
+            download=True,
+            transform=transform
         )
         # Subsample for quick CPU runs
         #subset = Subset(dataset, list(range(len(dataset) // 5)))
@@ -56,7 +63,7 @@ def main():
                 loss.backward()
                 optimizer.step()
 
-        # 4) Log parameters, metrics, and model to MLflow
+        # Log parameters, metrics, and model to MLflow
         mlflow.log_param("batch_size", 64)
         mlflow.log_param("epochs", num_epochs)
         mlflow.log_param("dataset", "ChestMNIST")

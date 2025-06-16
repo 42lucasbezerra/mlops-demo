@@ -15,7 +15,7 @@ pip install mlflow boto3
 
 # Set up environment vars
 export MLFLOW_BACKEND_STORE_URI="sqlite:////home/ubuntu/mlflow/db/mlflow.db"
-export MLFLOW_ARTIFACT_ROOT="/home/ubuntu/mlflow/mlruns"
+export MLFLOW_ARTIFACT_ROOT="s3://mlops-demo-artifact-storage"
 
 # Run server
 mlflow server \

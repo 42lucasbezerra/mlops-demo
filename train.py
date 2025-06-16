@@ -35,6 +35,7 @@ def main(num_epochs):
     # Generate a descriptive run name
     run_name = f"chestmnist_resnet18_{datetime.now().strftime('%Y%m%d_%H%M')}"
 
+    aborted = False
     with mlflow.start_run(run_name=run_name) as run:
         # Add organizational tags
         mlflow.set_tags({
@@ -73,38 +74,45 @@ def main(num_epochs):
         optimizer = torch.optim.Adam(model.fc.parameters(), lr=1e-3)
         criterion = nn.BCEWithLogitsLoss()
         model.train()
-        for epoch in range(num_epochs):
-            epoch_loss = 0.0
-            for images, labels in loader:
-                images, labels = images.to(device), labels.to(device).float()
-                optimizer.zero_grad()
-                outputs = model(images)
-                loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
-                epoch_loss += loss.item()
-            avg_loss = epoch_loss / len(loader)
-            print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
-            mlflow.log_metric("epoch_loss", avg_loss, step=epoch+1)
+        try:
+            for epoch in range(num_epochs):
+                epoch_loss = 0.0
+                for images, labels in loader:
+                    images, labels = images.to(device), labels.to(device).float()
+                    optimizer.zero_grad()
+                    outputs = model(images)
+                    loss = criterion(outputs, labels)
+                    loss.backward()
+                    optimizer.step()
+                    epoch_loss += loss.item()
+                avg_loss = epoch_loss / len(loader)
+                print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
+                mlflow.log_metric("epoch_loss", avg_loss, step=epoch+1)
+        except KeyboardInterrupt:
+            print("Training interrupted by user; marking run accordingly and exiting gracefully.")
+            mlflow.set_tag("run_status", "interrupted")
+            aborted = True
 
-        # Log final metrics and parameters
-        mlflow.log_param("batch_size", 64)
-        mlflow.log_param("epochs", num_epochs)
-        mlflow.log_metric("final_loss", avg_loss)
+        # Only log final metrics and the model if training completed
+        if not aborted:
+            mlflow.log_param("batch_size", 64)
+            mlflow.log_param("epochs", num_epochs)
+            mlflow.log_metric("final_loss", avg_loss)
 
-        # Log model with signature and example
-        sample_input = next(iter(loader))[0][:1].to(device)
-        model.eval()
-        with torch.no_grad():
-            sample_output = model(sample_input).cpu().numpy()
-        sample_input_np = sample_input.cpu().numpy()
-        signature = infer_signature(sample_input_np, sample_output)
-        mlflow.pytorch.log_model(
-            model,
-            "resnet18_chestmnist",
-            signature=signature,
-            input_example=sample_input_np
-        )
+            # Log model with signature and example
+            sample_input = next(iter(loader))[0][:1].to(device)
+            model.eval()
+            with torch.no_grad():
+                sample_output = model(sample_input).cpu().numpy()
+            sample_input_np = sample_input.cpu().numpy()
+            signature = infer_signature(sample_input_np, sample_output)
+            mlflow.pytorch.log_model(
+                model,
+                "resnet18_chestmnist",
+                signature=signature,
+                input_example=sample_input_np
+            )
+    print('run ended' if not aborted else 'run aborted')
 
 if __name__ == "__main__":
     main(args.num_epochs)

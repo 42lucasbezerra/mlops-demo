@@ -11,11 +11,11 @@ source ~/mlflow-env/bin/activate
 pip install mlflow boto3
 
 # Prepare directories
-mkdir -p ~/mlflow/{mlruns,db}
+# mkdir -p ~/mlflow/{mlruns,db}
 
 # Set up environment vars
-export MLFLOW_BACKEND_STORE_URI="sqlite:///~/mlflow/db/mlflow.db"
-export MLFLOW_ARTIFACT_ROOT="~/mlflow/mlruns"
+export MLFLOW_BACKEND_STORE_URI="sqlite:////home/ubuntu/mlflow/db/mlflow.db"
+export MLFLOW_ARTIFACT_ROOT="/home/ubuntu/mlflow/mlruns"
 
 # Run server
 mlflow server \

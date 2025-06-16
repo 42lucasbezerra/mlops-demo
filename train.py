@@ -13,10 +13,15 @@ from mlflow.models.signature import infer_signature
 print('code started')
 
 # Parse command-line arguments
+torch.backends.cudnn.benchmark = True
 parser = argparse.ArgumentParser(description="Train a ResNet18 on ChestMNIST and log to MLflow.")
 parser.add_argument(
     "--num_epochs", type=int, default=1,
     help="Number of epochs to train (default: 1)"
+)
+parser.add_argument(
+    "--learning_rate", type=float, default=1e-3,
+    help="Learning rate for optimizer (default: 1e-3)"
 )
 args = parser.parse_args()
 
@@ -24,16 +29,15 @@ args = parser.parse_args()
 tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 mlflow.set_tracking_uri(tracking_uri)
 mlflow.set_experiment("chestmnist-transfer-demo")
-
 print('experiment set')
 
-def main(num_epochs):
+def main(num_epochs, learning_rate):
     # Ensure root directory exists for dataset
     data_root = "data/medmnist"
     os.makedirs(data_root, exist_ok=True)
 
     # Generate a descriptive run name
-    run_name = f"chestmnist_resnet18_{datetime.now().strftime('%Y%m%d_%H%M')}"
+    run_name = f"chestmnist_resnet18_lr{learning_rate}_{datetime.now().strftime('%Y%m%d_%H%M')}"
 
     aborted = False
     with mlflow.start_run(run_name=run_name) as run:
@@ -42,8 +46,11 @@ def main(num_epochs):
             "dataset": "ChestMNIST",
             "model": "ResNet18",
             "framework": "PyTorch",
-            "num_epochs": str(num_epochs)
         })
+        # Log hyperparameters
+        mlflow.log_param("batch_size", 64)
+        mlflow.log_param("epochs", num_epochs)
+        mlflow.log_param("learning_rate", learning_rate)
 
         # Load and preprocess data
         transform = transforms.Compose([
@@ -53,10 +60,7 @@ def main(num_epochs):
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ])
         dataset = ChestMNIST(
-            root=data_root,
-            split="train",
-            download=True,
-            transform=transform
+            root=data_root, split="train", download=True, transform=transform
         )
         loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=2)
 
@@ -71,7 +75,7 @@ def main(num_epochs):
         model.to(device)
 
         # Train for specified epochs with BCEWithLogitsLoss
-        optimizer = torch.optim.Adam(model.fc.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(model.fc.parameters(), lr=learning_rate)
         criterion = nn.BCEWithLogitsLoss()
         model.train()
         try:
@@ -93,12 +97,9 @@ def main(num_epochs):
             mlflow.set_tag("run_status", "interrupted")
             aborted = True
 
-        # Only log final metrics and the model if training completed
+        # Only log final model if training completed
         if not aborted:
-            mlflow.log_param("batch_size", 64)
-            mlflow.log_param("epochs", num_epochs)
             mlflow.log_metric("final_loss", avg_loss)
-
             # Log model with signature and example
             sample_input = next(iter(loader))[0][:1].to(device)
             model.eval()
@@ -115,4 +116,4 @@ def main(num_epochs):
     print('run ended' if not aborted else 'run aborted')
 
 if __name__ == "__main__":
-    main(args.num_epochs)
+    main(args.num_epochs, args.learning_rate)

@@ -102,7 +102,7 @@ jobs:
           cache-to: type=gha,scope=${{ github.ref_name }}-mlops-demo,mode=max
           tags: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
 
-            - name: Deploy (create or update) Lambda function
+      - name: Deploy (create or update) Lambda function
         run: |
           if aws lambda get-function --function-name $LAMBDA_FUNCTION --region $AWS_REGION; then
             aws lambda update-function-code \

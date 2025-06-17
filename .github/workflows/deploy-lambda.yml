@@ -42,9 +42,18 @@ jobs:
                 ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
         # Logs into ECR so we can push images :contentReference[oaicite:5]{index=5}
 
+      - name: Set up QEMU (for multi-arch, optional here)
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+        with:
+          driver: docker-container
+
       - name: Build & push Docker image with cache
         uses: docker/build-push-action@v4
         with:
+          builder: default
           context: .
           file: Dockerfile.lambda
           push: true

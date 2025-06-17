@@ -62,29 +62,11 @@ def create_app():
         from torchvision import transforms
         import numpy as np
         
-        # Check multiple possible model locations
-        possible_paths = [
-            "./opt/model",  # Lambda layer location
-            "/var/task/model",                      # Lambda function code location
-            "/var/task/opt/model",
-            "./model",                              # Relative path
-            "model"                                 # Current directory
-        ]
+        # Force CPU usage for PyTorch
+        os.environ['CUDA_VISIBLE_DEVICES'] = ''
         
-        MODEL_PATH = None
-        for path in possible_paths:
-            if os.path.exists(path):
-                MODEL_PATH = path
-                break
-        
-        if MODEL_PATH is None:
-            # Debug info
-            current_dir = os.getcwd()
-            dir_contents = os.listdir(current_dir) if os.path.exists(current_dir) else []
-            raise HTTPException(
-                status_code=500, 
-                detail=f"Model not found. Checked paths: {possible_paths}. Current dir: {current_dir}, Contents: {dir_contents}"
-            )
+        # Model is copied to /var/task/opt/model by Dockerfile
+        MODEL_PATH = os.getenv("MODEL_PATH", "./opt/model")
         
         try:
             # Decode base64 image
@@ -106,25 +88,53 @@ def create_app():
             
             # Load model (cached after first load)
             if not hasattr(_predict_from_base64, '_model'):
+                if not os.path.exists(MODEL_PATH):
+                    raise RuntimeError(f"Model directory not found at {MODEL_PATH}")
+                
+                # Try to load MLflow model first
                 if os.path.exists(os.path.join(MODEL_PATH, "MLmodel")):
-                    _predict_from_base64._model = mlflow.pyfunc.load_model(MODEL_PATH)
-                else:
-                    model_files = [f for f in os.listdir(MODEL_PATH) if f.endswith(('.pth', '.pt'))]
+                    try:
+                        # Set environment to force CPU loading
+                        import warnings
+                        with warnings.catch_warnings():
+                            warnings.simplefilter("ignore")  # Suppress MLflow warnings
+                            _predict_from_base64._model = mlflow.pyfunc.load_model(MODEL_PATH)
+                    except Exception as e:
+                        print(f"MLflow loading failed: {e}")
+                        # Fallback to direct PyTorch loading
+                        _predict_from_base64._model = None
+                
+                # If MLflow loading failed or no MLmodel file, try direct PyTorch loading
+                if not hasattr(_predict_from_base64, '_model') or _predict_from_base64._model is None:
+                    # Look for PyTorch model files
+                    model_files = []
+                    for root, dirs, files in os.walk(MODEL_PATH):
+                        for file in files:
+                            if file.endswith(('.pth', '.pt')):
+                                model_files.append(os.path.join(root, file))
+                    
                     if model_files:
+                        print(f"Loading PyTorch model from: {model_files[0]}")
                         _predict_from_base64._model = torch.load(
-                            os.path.join(MODEL_PATH, model_files[0]), 
-                            map_location='cpu'
+                            model_files[0], 
+                            map_location=torch.device('cpu')  # Explicit CPU device
                         )
                     else:
                         raise RuntimeError(f"No model files found in {MODEL_PATH}")
             
             # Predict
             if hasattr(_predict_from_base64._model, 'predict'):
+                # MLflow model
                 preds = _predict_from_base64._model.predict(x.numpy())
             else:
+                # Direct PyTorch model
                 _predict_from_base64._model.eval()
                 with torch.no_grad():
-                    preds = _predict_from_base64._model(x).numpy()
+                    preds = _predict_from_base64._model(x)
+                    if hasattr(preds, 'numpy'):
+                        preds = preds.numpy()
+                    else:
+                        preds = preds.detach().cpu().numpy()
             
             # Handle prediction shape
             if len(preds.shape) > 1:

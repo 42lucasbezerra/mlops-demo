@@ -104,20 +104,22 @@ jobs:
 
       - name: Deploy (create or update) Lambda function
         run: |
-          if aws lambda get-function --function-name $LAMBDA_FUNCTION --region $AWS_REGION; then
+          if aws lambda get-function --function-name $LAMBDA_FUNCTION --region $AWS_REGION 2>/dev/null; then
+            echo "Updating existing Lambda function..."
             aws lambda update-function-code \
               --function-name $LAMBDA_FUNCTION \
               --region $AWS_REGION \
               --image-uri ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
           else
+            echo "Creating new Lambda function..."
             aws lambda create-function \
               --function-name $LAMBDA_FUNCTION \
               --region $AWS_REGION \
               --package-type Image \
               --code ImageUri=${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} \
               --role $LAMBDA_ROLE_ARN \
-              --timeout 30 \
-              --memory-size 512
+              --timeout 60 \
+              --memory-size 1024
           fi
 
       # NEW: block until LastUpdateStatus is no longer InProgress

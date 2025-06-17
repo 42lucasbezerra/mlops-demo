@@ -1,0 +1,75 @@
+name: CI/CD ⇢ Lambda Inference
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  AWS_REGION: us-east-2
+  AWS_ACCOUNT_ID: 546358762446
+  ECR_REPOSITORY: mlops-demo-inference
+  IMAGE_TAG: latest
+  LAMBDA_FUNCTION: mlops-demo-inference
+  LAMBDA_ROLE_ARN: arn:aws:iam::546358762446:role/mlops-inference-role
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        run: |
+          aws ecr describe-repositories \
+            --repository-names $ECR_REPOSITORY \
+            --region $AWS_REGION \
+          || aws ecr create-repository \
+               --repository-name $ECR_REPOSITORY \
+               --region $AWS_REGION
+          aws ecr get-login-password --region $AWS_REGION \
+            | docker login \
+                --username AWS \
+                --password-stdin \
+                ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+        # Logs into ECR so we can push images :contentReference[oaicite:5]{index=5}
+
+      - name: Build & push Docker image with cache
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: Dockerfile.lambda
+          push: true
+          tags: ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          cache-from: type=registry,ref=${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:cache
+          cache-to: type=registry,ref=${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:cache,mode=max
+        # Uses Docker Buildx registry caching to speed up rebuilds :contentReference[oaicite:6]{index=6}
+
+      - name: Deploy (create or update) Lambda function
+        run: |
+          if aws lambda get-function \
+               --function-name $LAMBDA_FUNCTION \
+               --region $AWS_REGION; then
+            aws lambda update-function-code \
+              --region $AWS_REGION \
+              --function-name $LAMBDA_FUNCTION \
+              --image-uri ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+            # Updates only the container image on existing function :contentReference[oaicite:7]{index=7}
+          else
+            aws lambda create-function \
+              --region $AWS_REGION \
+              --function-name $LAMBDA_FUNCTION \
+              --package-type Image \
+              --code ImageUri=${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} \
+              --role $LAMBDA_ROLE_ARN \
+              --timeout 30 \
+              --memory-size 512
+            # Creates the function on first deploy :contentReference[oaicite:8]{index=8}
+          fi

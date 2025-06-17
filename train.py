@@ -72,6 +72,12 @@ def main(num_epochs, learning_rate):
             param.requires_grad = False
         model.fc = nn.Linear(model.fc.in_features, n_classes)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print("torch.cuda.is_available():", torch.cuda.is_available())
+        print("torch.cuda.device_count():   ", torch.cuda.device_count())
+        if torch.cuda.is_available():
+            print("GPU name:                 ", torch.cuda.get_device_name(0))
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print("Using device:", device)
         model.to(device)
 
         # Train for specified epochs with BCEWithLogitsLoss

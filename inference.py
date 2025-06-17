@@ -1,38 +1,50 @@
 import os
 import mlflow
-import mlflow.pyfunc
 import uvicorn
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from PIL import Image
 from io import BytesIO
 from torchvision import transforms
 import numpy as np
-from medmnist import INFO, ChestMNIST
+from medmnist import INFO
 from mangum import Mangum
 
 # Configuration via environment variables
-TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
+TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI")  # No default; must be set in Lambda env
 EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME", "chestmnist-learning-demo")
 MODEL_NAME = os.getenv("MLFLOW_MODEL_NAME", "ChestMNIST_ResNet18")
-DATA_ROOT = os.getenv("MEDMNIST_DATA_ROOT", "./data")
+DATA_ROOT = os.getenv("MEDMNIST_DATA_ROOT", "/tmp/medmnist")  # Use /tmp in Lambda if needed
+ENABLE_INDEX = os.getenv("ENABLE_INDEX_ENDPOINT", "false").lower() == "true"
 
-# Initialize MLflow
-mlflow.set_tracking_uri(TRACKING_URI)
-mlflow.set_experiment(EXPERIMENT_NAME)
+app = FastAPI(title="ChestMNIST Inference API")
 
-# Load the model once at cold start
-model = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}/Production")
+# Lazy loaded model
+_mlflow_model = None
+
+def get_model():
+    global _mlflow_model
+    if _mlflow_model is None:
+        if not TRACKING_URI:
+            raise RuntimeError("MLFLOW_TRACKING_URI environment variable is not set")
+        # Initialize MLflow settings
+        mlflow.set_tracking_uri(TRACKING_URI)
+        mlflow.set_experiment(EXPERIMENT_NAME)
+        try:
+            _mlflow_model = mlflow.pyfunc.load_model(f"models:/{MODEL_NAME}/Production")
+        except Exception as e:
+            raise RuntimeError(f"Failed to load model from MLflow: {e}")
+    return _mlflow_model
 
 # Preprocessing pipeline based on MedMNIST stats
-info = INFO["chestmnist"]
+info = INFO.get("chestmnist")
+if info is None:
+    raise RuntimeError("MedMNIST INFO missing for chestmnist")
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.Grayscale(num_output_channels=3),
     transforms.ToTensor(),
     transforms.Normalize(mean=tuple(info['mean']), std=tuple(info['std'])),
 ])
-
-app = FastAPI(title="ChestMNIST Inference API")
 
 @app.get("/")
 def root():
@@ -48,10 +60,14 @@ async def predict(file: UploadFile = File(...)):
         img = Image.open(BytesIO(data)).convert("RGB")
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid image file")
-
-    # Preprocess and predict
+    # Preprocess
     x = transform(img).unsqueeze(0).numpy()
-    preds = model.predict(x)
+    # Load and run model
+    try:
+        model = get_model()
+        preds = model.predict(x)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     class_idx = int(np.argmax(preds, axis=1)[0])
     confidence = float(np.max(preds))
     return {"predicted_class": class_idx, "confidence": confidence}
@@ -60,8 +76,13 @@ async def predict(file: UploadFile = File(...)):
 def predict_index(index: int):
     """
     Runs inference on a specific test-set index from MedMNIST ChestMNIST dataset.
+    Disabled by default in production to avoid timeouts.
     """
+    if not ENABLE_INDEX:
+        raise HTTPException(status_code=404, detail="Index-based inference disabled in this environment")
     try:
+        os.makedirs(DATA_ROOT, exist_ok=True)
+        from medmnist import ChestMNIST
         dataset = ChestMNIST(
             split='test',
             root=DATA_ROOT,
@@ -71,11 +92,14 @@ def predict_index(index: int):
         img_tensor, label = dataset[index]
     except IndexError:
         raise HTTPException(status_code=404, detail="Index out of range")
-    except Exception:
-        raise HTTPException(status_code=500, detail="Error loading dataset")
-
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading dataset: {e}")
     x = img_tensor.unsqueeze(0).numpy()
-    preds = model.predict(x)
+    try:
+        model = get_model()
+        preds = model.predict(x)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     class_idx = int(np.argmax(preds, axis=1)[0])
     confidence = float(np.max(preds))
     return {
@@ -89,6 +113,5 @@ def predict_index(index: int):
 handler = Mangum(app)
 
 if __name__ == "__main__":
-    # For local debugging
     port = int(os.getenv("PORT", "8000"))
     uvicorn.run(app, host="0.0.0.0", port=port)

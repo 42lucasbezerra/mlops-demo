@@ -1,10 +1,13 @@
 # syntax=docker/dockerfile:1.4
 FROM public.ecr.aws/lambda/python:3.8
 
-# Copy requirements and cache pip downloads for faster rebuilds
+# Copy requirements and cache pip downloads
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements.txt
+
+# Copy model artifact
+COPY model /opt/model
 
 # Copy application code
 COPY inference.py .

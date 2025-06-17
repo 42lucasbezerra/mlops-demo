@@ -19,4 +19,4 @@ RUN pip install --no-cache-dir mlflow==2.5.0
 COPY model/ ${LAMBDA_TASK_ROOT}/opt/model/
 COPY inference.py ${LAMBDA_TASK_ROOT}/
 
-CMD ["app.handler"]
+CMD ["inference.handler"]

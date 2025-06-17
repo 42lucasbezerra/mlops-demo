@@ -1,29 +1,16 @@
-FROM public.ecr.aws/lambda/python:3.9
+# syntax=docker/dockerfile:1.4
+FROM public.ecr.aws/lambda/python:3.8
 
-# Install system deps fast
-RUN yum update -y && yum install -y gcc && yum clean all
+# Copy requirements and cache pip downloads
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
 
-# Install Python packages in optimal order
-RUN pip install --no-cache-dir \
-    numpy==1.24.3 \
-    pillow==9.5.0 \
-    fastapi==0.68.0 \
-    mangum==0.12.3
+# Copy model artifact
+COPY model /opt/model
 
-# Install PyTorch CPU-only (much smaller)
-RUN pip install --no-cache-dir \
-    torch==2.0.1+cpu \
-    torchvision==0.15.2+cpu \
-    --index-url https://download.pytorch.org/whl/cpu
+# Copy application code
+COPY inference.py .
 
-# Install MLflow last
-RUN pip install --no-cache-dir mlflow==2.5.0
-
-# Copy everything at once
-COPY model/ ${LAMBDA_TASK_ROOT}/opt/model/
-COPY app.py ${LAMBDA_TASK_ROOT}/
-
-# Precompile Python files
-RUN python -m compileall ${LAMBDA_TASK_ROOT}
-
-CMD ["app.handler"]
+# Set the Lambda handler
+CMD ["inference.handler"]

@@ -122,18 +122,18 @@ jobs:
               --memory-size 1024
           fi
 
-      # NEW: block until LastUpdateStatus is no longer InProgress
-      - name: Wait for Lambda update to finish
-        run: |
-          aws lambda wait function-updated \
-            --function-name $LAMBDA_FUNCTION \
-            --region $AWS_REGION
+      # # NEW: block until LastUpdateStatus is no longer InProgress
+      # - name: Wait for Lambda update to finish
+      #   run: |
+      #     aws lambda wait function-updated \
+      #       --function-name $LAMBDA_FUNCTION \
+      #       --region $AWS_REGION
 
-      - name: Update Lambda function configuration
-        run: |
-          echo "Updating Lambda function configuration..."
-          aws lambda update-function-configuration \
-            --function-name $LAMBDA_FUNCTION \
-            --region $AWS_REGION \
-            --timeout 300 \
-            --memory-size 1024
+      # - name: Update Lambda function configuration
+      #   run: |
+      #     echo "Updating Lambda function configuration..."
+      #     aws lambda update-function-configuration \
+      #       --function-name $LAMBDA_FUNCTION \
+      #       --region $AWS_REGION \
+      #       --timeout 300 \
+      #       --memory-size 1024

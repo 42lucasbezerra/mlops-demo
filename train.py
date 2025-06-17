@@ -4,7 +4,7 @@ import mlflow
 import torch
 import torch.nn as nn
 from datetime import datetime
-from medmnist import INFO, ChestMNIST
+from medmnist import INFO, PathMNIST
 from torchvision import transforms, models
 from torchvision.models import ResNet18_Weights
 from torch.utils.data import DataLoader
@@ -14,7 +14,7 @@ print('code started')
 
 # Parse command-line arguments
 torch.backends.cudnn.benchmark = True
-parser = argparse.ArgumentParser(description="Train a ResNet18 on ChestMNIST and log to MLflow.")
+parser = argparse.ArgumentParser(description="Train a ResNet18 on PathMNIST and log to MLflow.")
 parser.add_argument(
     "--num_epochs", type=int, default=1,
     help="Number of epochs to train (default: 1)"
@@ -28,8 +28,11 @@ args = parser.parse_args()
 # Configure MLflow tracking URI (fallback to localhost)
 tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 mlflow.set_tracking_uri(tracking_uri)
-mlflow.set_experiment("chestmnist-learning-demo")
+
+# Use a new experiment name for PathMNIST
+mlflow.set_experiment("pathmnist-transfer-demo")
 print('experiment set')
+
 
 def main(num_epochs, learning_rate):
     # Ensure root directory exists for dataset
@@ -37,58 +40,53 @@ def main(num_epochs, learning_rate):
     os.makedirs(data_root, exist_ok=True)
 
     # Generate a descriptive run name
-    run_name = f"chestmnist_resnet18_lr{learning_rate}_{datetime.now().strftime('%Y%m%d_%H%M')}"
+    run_name = f"pathmnist_resnet18_lr{learning_rate}_{datetime.now().strftime('%Y%m%d_%H%M')}"
 
     aborted = False
     with mlflow.start_run(run_name=run_name) as run:
-        # Add organizational tags
+        # Add organizational tags and hyperparameters
         mlflow.set_tags({
-            "dataset": "ChestMNIST",
+            "dataset": "PathMNIST",
             "model": "ResNet18",
-            "framework": "PyTorch",
+            "framework": "PyTorch"
         })
-        # Log hyperparameters
         mlflow.log_param("batch_size", 64)
         mlflow.log_param("epochs", num_epochs)
         mlflow.log_param("learning_rate", learning_rate)
 
-        # Load and preprocess data
+        # Data transforms and loader
         transform = transforms.Compose([
             transforms.Resize((224, 224)),
-            transforms.Grayscale(num_output_channels=3),
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ])
-        dataset = ChestMNIST(
-            root=data_root, split="train", download=True, transform=transform
+        dataset = PathMNIST(
+            root=data_root,
+            split="train",
+            download=True,
+            transform=transform
         )
         loader = DataLoader(dataset, batch_size=64, shuffle=True, num_workers=2)
 
-        # Build model (freeze backbone, fine-tune head for multi-label)
-        info = INFO["chestmnist"]
-        n_classes = len(info['label'])  # 14 labels
+        # Build model
+        info = INFO["pathmnist"]
+        n_classes = len(info['label'])  # 9 classes
         model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
         for param in model.parameters():
             param.requires_grad = False
         model.fc = nn.Linear(model.fc.in_features, n_classes)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print("torch.cuda.is_available():", torch.cuda.is_available())
-        print("torch.cuda.device_count():   ", torch.cuda.device_count())
-        if torch.cuda.is_available():
-            print("GPU name:                 ", torch.cuda.get_device_name(0))
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print("Using device:", device)
         model.to(device)
 
-        # Train for specified epochs with BCEWithLogitsLoss
+        # Training loop
         optimizer = torch.optim.Adam(model.fc.parameters(), lr=learning_rate)
-        criterion = nn.BCEWithLogitsLoss()
+        criterion = nn.CrossEntropyLoss()
         model.train()
         try:
             for epoch in range(num_epochs):
                 epoch_loss = 0.0
                 for images, labels in loader:
-                    images, labels = images.to(device), labels.to(device).float()
+                    images, labels = images.to(device), labels.to(device).long()
                     optimizer.zero_grad()
                     outputs = model(images)
                     loss = criterion(outputs, labels)
@@ -103,10 +101,10 @@ def main(num_epochs, learning_rate):
             mlflow.set_tag("run_status", "interrupted")
             aborted = True
 
-        # Only log final model if training completed
+        # Log final metrics and model if not aborted
         if not aborted:
             mlflow.log_metric("final_loss", avg_loss)
-            # Log model with signature and example
+            # Log model with signature and input example
             sample_input = next(iter(loader))[0][:1].to(device)
             model.eval()
             with torch.no_grad():
@@ -115,7 +113,7 @@ def main(num_epochs, learning_rate):
             signature = infer_signature(sample_input_np, sample_output)
             mlflow.pytorch.log_model(
                 model,
-                name="resnet18_chestmnist",
+                name="resnet18_pathmnist",
                 signature=signature,
                 input_example=sample_input_np
             )

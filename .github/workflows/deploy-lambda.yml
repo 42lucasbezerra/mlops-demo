@@ -6,7 +6,7 @@ on:
 
 env:
   AWS_REGION: us-east-2
-  AWS_ACCOUNT_ID: 546358762446
+  AWS_ACCOUNT_ID: {{ secrets.AWS_ACCOUNT_ID }}
   ECR_REPOSITORY: mlops-demo-inference
   IMAGE_TAG: latest
   LAMBDA_FUNCTION: mlops-demo-inference

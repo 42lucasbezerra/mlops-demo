@@ -12,9 +12,9 @@ from medmnist import INFO
 from mangum import Mangum
 
 # Configuration via environment variables
-MODEL_PATH = os.getenv("MODEL_PATH", "/opt/model")  # Path where model is stored locally
+MODEL_PATH = "/opt/model"  # Path where model is stored locally
 DATA_ROOT = os.getenv("MEDMNIST_DATA_ROOT", "/tmp/medmnist")
-ENABLE_INDEX = os.getenv("ENABLE_INDEX_ENDPOINT", "false").lower() == "true"
+ENABLE_INDEX = False
 
 app = FastAPI(title="ChestMNIST Inference API")
 

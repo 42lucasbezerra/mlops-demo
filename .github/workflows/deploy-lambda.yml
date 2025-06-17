@@ -129,10 +129,11 @@ jobs:
             --function-name $LAMBDA_FUNCTION \
             --region $AWS_REGION
 
-      # Now safe to change configuration
-      - name: Update Lambda environment variables
+      - name: Update Lambda function configuration
         run: |
+          echo "Updating Lambda function configuration..."
           aws lambda update-function-configuration \
             --function-name $LAMBDA_FUNCTION \
             --region $AWS_REGION \
-            --environment "Variables={MODEL_PATH=/opt/model,ENABLE_INDEX_ENDPOINT=false}"
+            --timeout 300 \
+            --memory-size 1024

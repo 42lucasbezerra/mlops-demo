@@ -66,7 +66,7 @@ def create_app():
         os.environ['CUDA_VISIBLE_DEVICES'] = ''
         
         # Model is copied to /var/task/opt/model by Dockerfile
-        MODEL_PATH = os.getenv("MODEL_PATH", "./opt/model")
+        MODEL_PATH = "./opt/model"
         
         try:
             # Decode base64 image

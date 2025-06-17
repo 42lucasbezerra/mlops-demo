@@ -12,8 +12,9 @@ from mlflow.models.signature import infer_signature
 
 print('code started')
 
-# Parse command-line arguments
 torch.backends.cudnn.benchmark = True
+
+# Parse command-line arguments
 parser = argparse.ArgumentParser(description="Train a ResNet18 on PathMNIST and log to MLflow.")
 parser.add_argument(
     "--num_epochs", type=int, default=1,
@@ -35,7 +36,7 @@ print('experiment set')
 
 
 def main(num_epochs, learning_rate):
-    # Ensure root directory exists for dataset
+    # Ensure dataset directory exists
     data_root = "data/medmnist"
     os.makedirs(data_root, exist_ok=True)
 
@@ -86,7 +87,11 @@ def main(num_epochs, learning_rate):
             for epoch in range(num_epochs):
                 epoch_loss = 0.0
                 for images, labels in loader:
-                    images, labels = images.to(device), labels.to(device).long()
+                    images = images.to(device)
+                    # Convert multi-dimensional labels to class indices for cross-entropy
+                    if labels.ndim > 1:
+                        labels = torch.argmax(labels, dim=1)
+                    labels = labels.to(device).long()
                     optimizer.zero_grad()
                     outputs = model(images)
                     loss = criterion(outputs, labels)

@@ -28,7 +28,7 @@ args = parser.parse_args()
 # Configure MLflow tracking URI (fallback to localhost)
 tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 mlflow.set_tracking_uri(tracking_uri)
-mlflow.set_experiment("chestmnist-transfer-learning-demo")
+mlflow.set_experiment("chestmnist-learning-demo")
 print('experiment set')
 
 def main(num_epochs, learning_rate):

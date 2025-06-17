@@ -1,10 +1,19 @@
 import json
+import base64
 from mangum import Mangum
 
-# Create FastAPI app with minimal imports at module level
 def create_app():
     from fastapi import FastAPI, HTTPException, File, UploadFile
+    from pydantic import BaseModel
     app = FastAPI(title="ChestMNIST Inference API")
+    
+    # Pydantic model for base64 input
+    class ImageRequest(BaseModel):
+        image: str  # base64 encoded image
+        
+    class ImageResponse(BaseModel):
+        predicted_class: int
+        confidence: float
     
     @app.get("/")
     def root():
@@ -16,8 +25,26 @@ def create_app():
         MODEL_PATH = "/opt/model"
         return {"status": "healthy", "model_exists": os.path.exists(MODEL_PATH)}
     
-    @app.post("/predict")
-    async def predict(file: UploadFile = File(...)):
+    @app.post("/predict", response_model=ImageResponse)
+    async def predict_base64(request: ImageRequest):
+        """
+        Accepts base64 encoded image, returns prediction
+        """
+        return await _predict_from_base64(request.image)
+    
+    @app.post("/predict/upload")
+    async def predict_upload(file: UploadFile = File(...)):
+        """
+        Alternative endpoint for file upload (requires python-multipart)
+        """
+        data = await file.read()
+        img_b64 = base64.b64encode(data).decode('utf-8')
+        return await _predict_from_base64(img_b64)
+    
+    async def _predict_from_base64(image_b64: str):
+        """
+        Shared prediction logic for base64 images
+        """
         # Import heavy dependencies only when needed
         import os
         import torch
@@ -27,14 +54,17 @@ def create_app():
         from torchvision import transforms
         import numpy as np
         
-        MODEL_PATH = "/opt/model"
+        MODEL_PATH = os.getenv("MODEL_PATH", "/opt/model")
         
         try:
-            # Read image
-            data = await file.read()
-            img = Image.open(BytesIO(data)).convert("RGB")
+            # Decode base64 image
+            try:
+                img_data = base64.b64decode(image_b64)
+                img = Image.open(BytesIO(img_data)).convert("RGB")
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Invalid base64 image: {str(e)}")
             
-            # Quick transform
+            # Transform
             transform = transforms.Compose([
                 transforms.Resize((224, 224)),
                 transforms.Grayscale(num_output_channels=3),
@@ -45,35 +75,45 @@ def create_app():
             x = transform(img).unsqueeze(0)
             
             # Load model (cached after first load)
-            if not hasattr(predict, '_model'):
+            if not hasattr(_predict_from_base64, '_model'):
                 if os.path.exists(os.path.join(MODEL_PATH, "MLmodel")):
-                    predict._model = mlflow.pyfunc.load_model(MODEL_PATH)
+                    _predict_from_base64._model = mlflow.pyfunc.load_model(MODEL_PATH)
                 else:
                     model_files = [f for f in os.listdir(MODEL_PATH) if f.endswith(('.pth', '.pt'))]
                     if model_files:
-                        predict._model = torch.load(os.path.join(MODEL_PATH, model_files[0]), map_location='cpu')
+                        _predict_from_base64._model = torch.load(
+                            os.path.join(MODEL_PATH, model_files[0]), 
+                            map_location='cpu'
+                        )
                     else:
                         raise RuntimeError("No model found")
             
             # Predict
-            if hasattr(predict._model, 'predict'):
-                preds = predict._model.predict(x.numpy())
+            if hasattr(_predict_from_base64._model, 'predict'):
+                preds = _predict_from_base64._model.predict(x.numpy())
             else:
-                predict._model.eval()
+                _predict_from_base64._model.eval()
                 with torch.no_grad():
-                    preds = predict._model(x).numpy()
+                    preds = _predict_from_base64._model(x).numpy()
             
-            class_idx = int(np.argmax(preds))
-            confidence = float(np.max(preds))
+            # Handle prediction shape
+            if len(preds.shape) > 1:
+                class_idx = int(np.argmax(preds, axis=1)[0])
+                confidence = float(np.max(preds, axis=1)[0])
+            else:
+                class_idx = int(np.argmax(preds))
+                confidence = float(np.max(preds))
             
             return {"predicted_class": class_idx, "confidence": confidence}
             
+        except HTTPException:
+            raise
         except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
     
     return app
 
-# Create app instance (this happens during init)
+# Create app instance
 app = create_app()
 
 # Lambda handler

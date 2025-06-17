@@ -127,4 +127,4 @@ jobs:
           aws lambda update-function-configuration \
             --function-name $LAMBDA_FUNCTION \
             --region $AWS_REGION \
-            --environment Variables="{\"MODEL_PATH\":\"/opt/model\",\"ENABLE_INDEX_ENDPOINT\":\"false\"}"
+            --environment 'Variables={"MODEL_PATH":"/opt/model","ENABLE_INDEX_ENDPOINT":"false"}'

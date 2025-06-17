@@ -3,7 +3,7 @@ import base64
 from mangum import Mangum
 
 def create_app():
-    from fastapi import FastAPI, HTTPException, File, UploadFile
+    from fastapi import FastAPI, HTTPException
     from pydantic import BaseModel
     app = FastAPI(title="ChestMNIST Inference API")
     
@@ -31,15 +31,6 @@ def create_app():
         Accepts base64 encoded image, returns prediction
         """
         return await _predict_from_base64(request.image)
-    
-    @app.post("/predict/upload")
-    async def predict_upload(file: UploadFile = File(...)):
-        """
-        Alternative endpoint for file upload (requires python-multipart)
-        """
-        data = await file.read()
-        img_b64 = base64.b64encode(data).decode('utf-8')
-        return await _predict_from_base64(img_b64)
     
     async def _predict_from_base64(image_b64: str):
         """

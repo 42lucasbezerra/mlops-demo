@@ -1,0 +1,11 @@
+FROM public.ecr.aws/lambda/python:3.8
+
+# Copy requirements and install
+COPY requirements.txt  .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy app
+COPY inference.py .
+
+# Set the Lambda handler
+CMD ["inference.handler"]

@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+medmnist
+mlflow
+boto3
+mangum
+torchvision
+torch
+Pillow

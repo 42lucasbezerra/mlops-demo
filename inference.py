@@ -8,14 +8,15 @@ from io import BytesIO
 from torchvision import transforms
 import numpy as np
 from medmnist import INFO
+from mangum import Mangum
 
 # Configure MLflow tracking URI (fallback to localhost)
 tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
 mlflow.set_tracking_uri(tracking_uri)
-mlflow.set_experiment("chestmnist-transfer-demo")
+mlflow.set_experiment("chestmnist-learning-demo")
 
 # Model registry name
-model_name = "resnet18_chestmnist"
+model_name = "ChestMNIST_ResNet18"
 # Load the model from MLflow Model Registry (Production stage)
 model = mlflow.pyfunc.load_model(f"models:/{model_name}/Production")
 
@@ -41,3 +42,5 @@ async def predict(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+handler = Mangum(app)

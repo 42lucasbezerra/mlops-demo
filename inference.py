@@ -23,7 +23,7 @@ def create_app():
     def health():
         import os
         possible_paths = [
-            os.getenv("MODEL_PATH", "/opt/model"),
+            "./opt/model",
             "/var/task/model", 
             "./model",
             "model"
@@ -64,8 +64,9 @@ def create_app():
         
         # Check multiple possible model locations
         possible_paths = [
-            os.getenv("MODEL_PATH", "/opt/model"),  # Lambda layer location
+            "./opt/model",  # Lambda layer location
             "/var/task/model",                      # Lambda function code location
+            "/var/task/opt/model",
             "./model",                              # Relative path
             "model"                                 # Current directory
         ]

@@ -22,8 +22,25 @@ def create_app():
     @app.get("/health")
     def health():
         import os
-        MODEL_PATH = "/opt/model"
-        return {"status": "healthy", "model_exists": os.path.exists(MODEL_PATH)}
+        possible_paths = [
+            os.getenv("MODEL_PATH", "/opt/model"),
+            "/var/task/model", 
+            "./model",
+            "model"
+        ]
+        
+        found_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                found_path = path
+                break
+        
+        return {
+            "status": "healthy", 
+            "model_path": found_path,
+            "current_dir": os.getcwd(),
+            "checked_paths": possible_paths
+        }
     
     @app.post("/predict", response_model=ImageResponse)
     async def predict_base64(request: ImageRequest):
@@ -45,7 +62,28 @@ def create_app():
         from torchvision import transforms
         import numpy as np
         
-        MODEL_PATH = os.getenv("MODEL_PATH", "/opt/model")
+        # Check multiple possible model locations
+        possible_paths = [
+            os.getenv("MODEL_PATH", "/opt/model"),  # Lambda layer location
+            "/var/task/model",                      # Lambda function code location
+            "./model",                              # Relative path
+            "model"                                 # Current directory
+        ]
+        
+        MODEL_PATH = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                MODEL_PATH = path
+                break
+        
+        if MODEL_PATH is None:
+            # Debug info
+            current_dir = os.getcwd()
+            dir_contents = os.listdir(current_dir) if os.path.exists(current_dir) else []
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Model not found. Checked paths: {possible_paths}. Current dir: {current_dir}, Contents: {dir_contents}"
+            )
         
         try:
             # Decode base64 image
@@ -77,7 +115,7 @@ def create_app():
                             map_location='cpu'
                         )
                     else:
-                        raise RuntimeError("No model found")
+                        raise RuntimeError(f"No model files found in {MODEL_PATH}")
             
             # Predict
             if hasattr(_predict_from_base64._model, 'predict'):
